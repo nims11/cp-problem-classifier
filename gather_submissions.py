@@ -52,7 +52,9 @@ def get_concerned_submissions():
             if not os.path.exists(fname):
                 url = 'http://codeforces.com/contest/%d/submission/%d' % (pid[0], lst[0])
                 subprocess.call('wget %s --directory-prefix=%s' % (url, DATA_DIR), shell=True)
-                time.sleep(1)
+                time.sleep(0.8)
             submission_pool[pid] = lst[1:]
+            if len(submission_pool[pid]) == 0:
+                del submission_pool[pid]
 
 get_concerned_submissions()
