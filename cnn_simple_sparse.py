@@ -58,14 +58,13 @@ def batch_iter(data, batch_size=BATCH_SIZE, num_epochs=EPOCH, shuffle=True):
     """
     Generates a batch iterator for a dataset.
     """
-    data = np.array(data)
     data_size = len(data)
     num_batches_per_epoch = int((len(data)-1)/batch_size) + 1
     for epoch in range(num_epochs):
         # Shuffle the data at each epoch
         if shuffle:
-            shuffle_indices = np.random.permutation(np.arange(data_size))
-            shuffled_data = data[shuffle_indices]
+            np.random.shuffle(data)
+            shuffled_data = data
         else:
             shuffled_data = data
         for batch_num in range(num_batches_per_epoch):
@@ -95,10 +94,10 @@ def load_data_and_labels(fname, limit=LIMIT, split=0.8):
         if len(data['problem']) > SOURCE_THRESHOLD:
             continue
         if data['problem'] in train_problems:
-            x_train.append(vectorizer.simple_ascii_vectorizer(data['source'], limit))
+            x_train.append(data['source'])
             y_train.append(y_vec)
         else:
-            x_test.append(vectorizer.simple_ascii_vectorizer(data['source'], limit))
+            x_test.append(data['source'])
             y_test.append(y_vec)
             pids.append(data['problem'])
 
@@ -120,19 +119,19 @@ def deepnn(x):
   # Reshape to use within a convolutional neural net.
   # Last dimension is for "features" - there is only one here, since images are
   # grayscale -- it would be 3 for an RGB image, 4 for RGBA, etc.
-  x_image = tf.reshape(x, [-1, 1, LIMIT, 1])
+  # x_image = tf.reshape(x, [None, 96, LIMIT, 1])
 
   # First convolutional layer - maps one grayscale image to 32 feature maps.
-  W_conv1 = weight_variable([1, 50, 1, 16])
+  W_conv1 = weight_variable([96, 25, 1, 16])
   b_conv1 = bias_variable([16])
-  h_conv1 = tf.nn.relu(conv2d(x_image, W_conv1) + b_conv1)
+  h_conv1 = tf.nn.relu(conv2d(x, W_conv1) + b_conv1)
 
   # Pooling layer - downsamples by 2X.
   h_pool1 = max_pool_2x2(h_conv1)
 
   # Second convolutional layer -- maps 32 feature maps to 64.
-  W_conv2 = weight_variable([1, 25, 16, 32])
-  b_conv2 = bias_variable([32])
+  W_conv2 = weight_variable([1, 15, 16, 16])
+  b_conv2 = bias_variable([16])
   h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
 
   # Second pooling layer.
@@ -140,7 +139,7 @@ def deepnn(x):
 
   # Fully connected layer 1 -- after 2 round of downsampling, our 28x28 image
   # is down to 7x7x64 feature maps -- maps this to 1024 features.
-  final_dimen = (LIMIT // 16) * 32
+  final_dimen = 45 * 16
   W_fc1 = weight_variable([final_dimen, 256])
   b_fc1 = bias_variable([256])
 
@@ -152,7 +151,6 @@ def deepnn(x):
   keep_prob = tf.placeholder(tf.float32)
   h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 
-  # Map the 1024 features to 10 classes, one for each digit
   W_fc2 = weight_variable([256, len(CONCERNED_TAGS)])
   b_fc2 = bias_variable([len(CONCERNED_TAGS)])
 
@@ -162,7 +160,7 @@ def deepnn(x):
 
 def conv2d(x, W):
   """conv2d returns a 2d convolution layer with full stride."""
-  return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
+  return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='VALID')
 
 
 def max_pool_2x2(x):
@@ -182,13 +180,20 @@ def bias_variable(shape):
   initial = tf.constant(0.1, shape=shape)
   return tf.Variable(initial)
 
+def transform(strings):
+    vectors = []
+    for string in strings:
+        vec = vectorizer.simple_ascii_vectorizer_sparse(string, LIMIT)
+        vec = np.array(vec).transpose()
+        vectors.append([[[x] for x in vector] for vector in vec])
+    return np.array(vectors)
 
 def main(_):
   # Import data
   X_train, Y_train, X_test, Y_test, pids = load_data_and_labels('./dataset.pickle.2')
 
   # Create the model
-  x = tf.placeholder(tf.float32, [None, LIMIT])
+  x = tf.placeholder(tf.float32, [None, 96, LIMIT, 1])
 
   # Define loss and optimizer
   y_ = tf.placeholder(tf.float32, [None, len(CONCERNED_TAGS)])
@@ -204,32 +209,33 @@ def main(_):
   saver = tf.train.Saver()
 
   with tf.Session() as sess:
-    # saver.restore(sess, "./model")
-    sess.run(tf.global_variables_initializer())
-    print(len(X_train), len(X_test))
-    for idx, batch in enumerate(batch_iter(list(zip(X_train, Y_train)))):
-      xx, yy = zip(*batch)
-      if idx % 100 == 0:
-        print('step %d' % idx)
-        train_accuracy = accuracy.eval(feed_dict={
-            x:xx, y_: yy, keep_prob: 1.0})
-        print('step %d, training accuracy %g' % (idx, train_accuracy))
-      train_step.run(feed_dict={x: xx, y_: yy, keep_prob: 0.5})
+    saver.restore(sess, "./model")
+    # sess.run(tf.global_variables_initializer())
+    # for idx, batch in enumerate(batch_iter(list(zip(X_train, Y_train)))):
+    #   xx, yy = zip(*batch)
+    #   xx = transform(xx)
+    #   if idx % 100 == 0:
+    #     print('step %d' % idx)
+    #     train_accuracy = accuracy.eval(feed_dict={
+    #         x:xx, y_: yy, keep_prob: 1.0})
+    #     print('step %d, training accuracy %g' % (idx, train_accuracy))
+    #     saver.save(sess, './model')
+    #   train_step.run(feed_dict={x: xx, y_: yy, keep_prob: 0.5})
 
     accuracy_sum = 0.0
     for idx, batch in enumerate(batch_iter(list(zip(X_test, Y_test)), num_epochs=1)):
       xx, yy = zip(*batch)
       accuracy_sum += accuracy.eval(feed_dict={
-          x: xx, y_: yy, keep_prob: 1.0
+          x: transform(xx), y_: yy, keep_prob: 1.0
       })
     print('test accuracy %g' % (accuracy_sum / len(Y_test)))
 
     pid_count = defaultdict(lambda: [0]*len(CONCERNED_TAGS))
     truth = {}
-    for idx, batch in enumerate(batch_iter(list(zip(X_test, Y_test, pids)), num_epochs=1, batch_size=100)):
+    for idx, batch in enumerate(batch_iter(list(zip(X_test, Y_test, pids)), num_epochs=1, batch_size=64)):
       xx, yy, pid = zip(*batch)
       prediction = tf.argmax(y_conv, 1)
-      run = sess.run([prediction], {x:xx, keep_prob: 1.0})[0]
+      run = sess.run([prediction], {x:transform(xx), keep_prob: 1.0})[0]
       for runn, pidd, yyy in zip(run, pid, yy):
           pid_count[pidd][runn] += 1
           truth[pidd] = yyy
@@ -239,7 +245,6 @@ def main(_):
         if np.argmax(count) == np.argmax(truth[pid]):
             problem_accuracy_sum += 1
     print('Problem Accuracy = %g' % (problem_accuracy_sum / len(set(pids))))
-    saver.save(sess, './model.simple')
 
 
 if __name__ == '__main__':
