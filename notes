@@ -1,0 +1,22 @@
+# CNN Sparse simple cleaning 96d
+6600 steps
+test - 53.64
+prob - 62.26
+
+# CNN Sparse simple cleaning 28d
+11200 steps, 50 epochs
+test - 53.54
+prob - 62.26
+
+# CNN simple cleaning
+11200 steps, 50 epochs
+test = 36.12
+prob = 33.96
+
+# LR with alpha tokens
+test = 61.34
+prob = 69.81
+
+# LR with 4 byte grams
+test = 63.67
+prob = 75.47
